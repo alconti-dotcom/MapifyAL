@@ -1,1 +1,46 @@
-# MapifyAL
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Text → Mind Map</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="panel">
+    <h1>Text → Mind Map</h1>
+    <textarea id="input" spellcheck="false" placeholder="Paste or type your text here…"></textarea>
+    <div class="row">
+      <button id="gen" class="primary">Generate</button>
+      <label class="btn">Open file<input type="file" id="file" accept=".txt,.md,.text" hidden></label>
+      <button id="sample">Sample</button>
+    </div>
+    <div id="status"></div>
+    <details open>
+      <summary>Colour legend</summary>
+      <div id="legendBody"></div>
+    </details>
+  </aside>
+
+  <main id="canvas">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="toolbar">
+      <button id="menuBtn">☰</button>
+      <button id="zin">+</button>
+      <button id="zout">−</button>
+      <button id="fit">Fit</button>
+      <button id="pdf" class="primary">PDF</button>
+    </div>
+    <div id="editor" hidden>
+      Type: <select id="typeSel"></select>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.4/dist/svg2pdf.umd.min.js"></script>
+  <script src="js/nlp.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
+
