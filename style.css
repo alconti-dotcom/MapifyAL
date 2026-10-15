@@ -13,7 +13,7 @@ button.primary{background:#2A9D8F;border-color:#2A9D8F;color:#fff;font-weight:60
 #canvas{flex:1;position:relative;overflow:hidden;touch-action:none;cursor:grab;background-color:#fafbfc;
   background-image:radial-gradient(circle,#cdd3da 1px,transparent 1.2px);background-size:28px 28px}
 #canvas:active{cursor:grabbing}
-#svg{width:100%;height:100%;display:block}
+#svg{width:100%;height:100%;display:block;user-select:none;-webkit-user-select:none}
 #toolbar{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:3}
 #toolbar button{box-shadow:0 1px 3px rgba(0,0,0,.12)}
 #menuBtn{display:none}
@@ -21,9 +21,14 @@ button.primary{background:#2A9D8F;border-color:#2A9D8F;color:#fff;font-weight:60
   box-shadow:0 6px 20px rgba(0,0,0,.18);font-size:13px}
 #editor[hidden]{display:none}
 #editor select{font-size:14px;padding:4px}
+
+/* highlight + ripple */
+.node,.edge{transition:opacity .28s ease}
+.node{transform-box:fill-box;transform-origin:center}
+.dim{opacity:.13}
+
 @media (max-width:760px){
   #panel{position:absolute;inset:0 auto 0 0;width:88%;transform:translateX(-100%);transition:transform .2s}
   #panel.open{transform:none}
   #menuBtn{display:inline-block}
 }
-
