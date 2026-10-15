@@ -8,6 +8,7 @@
   const editor = $('editor'), typeSel = $('typeSel'), panel = $('panel');
 
   let nodes = [], world = null, editing = null;
+  let selected = null, nodeEls = new Map(), edgeEls = new Map();
   const view = { x: 0, y: 0, k: 1 };
 
   const SAMPLE = `Photosynthesis
@@ -42,32 +43,47 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     const d = Math.min(...colors.map(c => contrast('#111111', c)));
     return w >= d ? '#ffffff' : '#111111';
   }
+  function mix(h1, h2, t) {
+    const a = [1, 3, 5].map(i => parseInt(h1.substr(i, 2), 16));
+    const b = [1, 3, 5].map(i => parseInt(h2.substr(i, 2), 16));
+    return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  }
   const isGrad = n => n.isMember && n.type !== 'member';
 
   /* ---------- draw the graph into a <g> (used by screen AND pdf) ---------- */
-  function drawGraph(list, g, defs) {
+  function drawGraph(list, g, defs, pre) {
     const eg = S('g', {}, g), ng = S('g', {}, g);
+    const els = { nodes: new Map(), edges: new Map() };
+    const STEPS = 10;
 
+    // connectors: gradients are drawn as short solid segments (renders identically on screen and in the PDF)
     for (const n of list) {
       const p = n.parent; if (!p) continue;
       const a = borderPoint(p, n), b = borderPoint(n, p), col = TYPES[n.type].color;
-      let stroke = col;
+      const w = Math.max(1.8, 4.2 - 0.6 * n.depth);
+      const grp = S('g', { 'class': 'edge' }, eg);
       if (isGrad(n)) {
-        const id = 'eg' + n.id;
-        const lg = S('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: a.x, y1: a.y, x2: b.x, y2: b.y }, defs);
-        S('stop', { offset: '0', 'stop-color': TEAL }, lg);
-        S('stop', { offset: '1', 'stop-color': col }, lg);
-        stroke = 'url(#' + id + ')';
+        for (let i = 0; i < STEPS; i++) {
+          const t0 = i / STEPS, t1 = (i + 1) / STEPS;
+          S('path', {
+            d: 'M' + (a.x + (b.x - a.x) * t0) + ' ' + (a.y + (b.y - a.y) * t0) +
+               'L' + (a.x + (b.x - a.x) * t1) + ' ' + (a.y + (b.y - a.y) * t1),
+            fill: 'none', stroke: mix(TEAL, col, (i + 0.5) / STEPS),
+            'stroke-width': w, 'stroke-linecap': 'round'
+          }, grp);
+        }
+      } else {
+        S('path', { d: 'M' + a.x + ' ' + a.y + 'L' + b.x + ' ' + b.y, fill: 'none', stroke: col, 'stroke-width': w, 'stroke-linecap': 'round' }, grp);
       }
-      S('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke, 'stroke-width': n.depth <= 1 ? 3.5 : 2.2, 'stroke-linecap': 'round' }, eg);
+      els.edges.set(n.id, grp);
     }
 
     for (const n of list) {
-      const grp = S('g', { 'data-id': n.id, style: 'cursor:pointer' }, ng);
+      const grp = S('g', { 'data-id': n.id, 'class': 'node', style: 'cursor:pointer' }, ng);
       const col = TYPES[n.type].color;
       let fill = col, tc;
       if (isGrad(n) && n.parent) {
-        const id = 'ng' + n.id;
+        const id = pre + 'ng' + n.id;
         let ux = n.parent.x - n.x, uy = n.parent.y - n.y; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
         const lg = S('linearGradient', { id, x1: 0.5 + 0.5 * ux, y1: 0.5 + 0.5 * uy, x2: 0.5 - 0.5 * ux, y2: 0.5 - 0.5 * uy }, defs);
         S('stop', { offset: '0', 'stop-color': TEAL }, lg);
@@ -87,15 +103,45 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
         }, grp);
         t.textContent = ln;
       });
+      els.nodes.set(n.id, grp);
     }
+    return els;
   }
 
   function render() {
     svg.innerHTML = '';
     const defs = S('defs', {}, svg);
     world = S('g', {}, svg);
-    drawGraph(nodes, world, defs);
+    const els = drawGraph(nodes, world, defs, 's');
+    nodeEls = els.nodes; edgeEls = els.edges;
     applyView();
+    applySelection();
+  }
+
+  /* ---------- highlight + domino ripple ---------- */
+  function applySelection() {
+    const keep = new Set();
+    if (selected) (function w(m) { keep.add(m.id); m.children.forEach(w); })(selected);
+    nodeEls.forEach((el, id) => el.classList.toggle('dim', !!selected && !keep.has(id)));
+    edgeEls.forEach((el, id) => el.classList.toggle('dim', !!selected && (!keep.has(id) || id === selected.id)));
+  }
+  function ripple(n) {
+    const base = n.depth;
+    (function walk(m) {
+      const el = nodeEls.get(m.id);
+      if (el && el.animate) {
+        el.animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.22)', offset: 0.4 }, { transform: 'scale(1)' }],
+          { duration: 520, delay: (m.depth - base) * 130, easing: 'ease-in-out', iterations: 1 }
+        );
+      }
+      m.children.forEach(walk);
+    })(n);
+  }
+  function select(n, animate) {
+    selected = n;
+    applySelection();
+    if (n && animate) ripple(n);
   }
 
   /* ---------- infinite canvas ---------- */
@@ -106,13 +152,13 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     canvas.style.backgroundPosition = view.x + 'px ' + view.y + 'px';
   }
   function zoomAt(px, py, f) {
-    const k = Math.min(4, Math.max(0.02, view.k * f)), r = k / view.k;
+    const k = Math.min(4, Math.max(0.01, view.k * f)), r = k / view.k;
     view.x = px - (px - view.x) * r; view.y = py - (py - view.y) * r; view.k = k; applyView();
   }
   function fit() {
     if (!nodes.length) return;
     const b = bounds(nodes, 60), r = canvas.getBoundingClientRect();
-    view.k = Math.max(0.02, Math.min(r.width / b.w, r.height / b.h, 1.5));
+    view.k = Math.max(0.01, Math.min(r.width / b.w, r.height / b.h, 1.5));
     view.x = r.width / 2 - (b.x + b.w / 2) * view.k;
     view.y = r.height / 2 - (b.y + b.h / 2) * view.k;
     applyView();
@@ -137,7 +183,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     ptrs.set(e.pointerId, rel(e));
     if (ptrs.size === 2 && pinch) {
       const [a, b] = [...ptrs.values()], m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      view.k = Math.min(4, Math.max(0.02, pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
+      view.k = Math.min(4, Math.max(0.01, pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
       view.x = m.x - pinch.wx * view.k; view.y = m.y - pinch.wy * view.k; applyView();
     } else if (drag) {
       const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
@@ -148,8 +194,11 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
   const endPtr = e => {
     if (drag && !drag.moved && ptrs.size === 1) {
       const el = drag.target.closest && drag.target.closest('[data-id]');
-      if (el) openEditor(nodes.find(n => n.id === +el.getAttribute('data-id')), e);
-      else editor.hidden = true;
+      if (el) {
+        const n = nodes.find(n => n.id === +el.getAttribute('data-id'));
+        openEditor(n, e);
+        select(n, true);
+      } else { editor.hidden = true; select(null, false); }
     }
     ptrs.delete(e.pointerId); drag = null; if (ptrs.size < 2) pinch = null;
   };
@@ -185,15 +234,16 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
         try {
           nodes = layout(root);
           editor.hidden = true;
+          selected = null;
           render(); fit();
-          statusEl.textContent = nodes.length + ' boxes · drag to pan · scroll/pinch to zoom · tap a box to change its type';
+          statusEl.textContent = nodes.length + ' boxes · drag to pan · scroll/pinch to zoom · tap a box to highlight its branch (tap empty space to clear)';
           panel.classList.remove('open');
         } catch (err) { console.error(err); statusEl.textContent = 'Error: ' + err.message; }
       }, 20);
     } catch (err) { console.error(err); statusEl.textContent = 'Error: ' + err.message; }
   }
 
-  /* ---------- PDF (vector, cropped to content) ---------- */
+  /* ---------- PDF (vector, cropped to content, never dimmed) ---------- */
   async function downloadPDF() {
     if (!nodes.length) { statusEl.textContent = 'Generate a map first.'; return; }
     try {
@@ -209,7 +259,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       const defs = S('defs', {}, out);
       S('rect', { x: 0, y: 0, width: W, height: H, fill: '#ffffff' }, out);
       const g = S('g', { transform: `translate(${-b.x} ${-b.y})` }, out);
-      drawGraph(nodes, g, defs);
+      drawGraph(nodes, g, defs, 'p');
 
       const pdf = new jsPDF({ orientation: W >= H ? 'l' : 'p', unit: 'px', format: [W * s, H * s], hotfixes: ['px_scaling'] });
       const opts = { x: 0, y: 0, width: W * s, height: H * s };
@@ -245,4 +295,3 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
   input.value = SAMPLE;
   generate();
 })();
-
