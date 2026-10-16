@@ -1,14 +1,17 @@
 (function () {
   'use strict';
   const { TYPES, TEAL, parse } = window.NLP;
-  const { layout, bounds, borderPoint, FONT } = window.MM;
+  const { layout, stretch, bounds, borderPoint, FONT } = window.MM;
   const NS = 'http://www.w3.org/2000/svg';
   const $ = id => document.getElementById(id);
   const svg = $('svg'), canvas = $('canvas'), input = $('input'), statusEl = $('status');
   const editor = $('editor'), typeSel = $('typeSel'), panel = $('panel');
+  const lenEl = $('len'), lenVal = $('lenVal'), themeBtn = $('theme');
 
   let nodes = [], world = null, editing = null;
   let selected = null, nodeEls = new Map(), edgeEls = new Map();
+  let lenK = (+lenEl.value || 120) / 100;
+  let dark = false;
   const view = { x: 0, y: 0, k: 1 };
 
   const SAMPLE = `Photosynthesis
@@ -49,6 +52,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
   }
   const isGrad = n => n.isMember && n.type !== 'member';
+  const PAGE_BG = () => (dark ? '#12161c' : '#ffffff');
 
   /* ---------- draw the graph into a <g> (used by screen AND pdf) ---------- */
   function drawGraph(list, g, defs, pre) {
@@ -94,7 +98,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
 
       S('rect', {
         x: n.x - n.w / 2, y: n.y - n.h / 2, width: n.w, height: n.h, rx: n.depth === 0 ? 18 : 10,
-        fill, stroke: '#000000', 'stroke-opacity': 0.12, 'stroke-width': 1
+        fill, stroke: dark ? '#ffffff' : '#000000', 'stroke-opacity': dark ? 0.22 : 0.12, 'stroke-width': 1
       }, grp);
       n.lines.forEach((ln, i) => {
         const t = S('text', {
@@ -224,6 +228,52 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
   }
   typeSel.addEventListener('change', () => { if (editing) { editing.type = typeSel.value; render(); } });
 
+  /* ---------- line-length knob with a locked view anchor ---------- */
+  // While the knob is being dragged, the box nearest the screen centre stays pinned to its on-screen spot,
+  // so the map grows/shrinks around what you're looking at instead of flying away.
+  let anchor = null, raf = 0;
+  function grabAnchor() {
+    if (!nodes.length) return;
+    const r = canvas.getBoundingClientRect(), cx = r.width / 2, cy = r.height / 2;
+    let best = null, bd = Infinity, bsx = 0, bsy = 0;
+    for (const n of nodes) {
+      const sx = n.x * view.k + view.x, sy = n.y * view.k + view.y;
+      const d = (sx - cx) * (sx - cx) + (sy - cy) * (sy - cy);
+      if (d < bd) { bd = d; best = n; bsx = sx; bsy = sy; }
+    }
+    anchor = best ? { n: best, sx: bsx, sy: bsy } : null;
+  }
+  const dropAnchor = () => { anchor = null; };
+  lenEl.addEventListener('pointerdown', grabAnchor);
+  lenEl.addEventListener('keydown', () => { if (!anchor) grabAnchor(); });
+  ['change', 'pointerup', 'pointercancel', 'blur'].forEach(ev => lenEl.addEventListener(ev, dropAnchor));
+  lenEl.addEventListener('input', () => {
+    lenK = (+lenEl.value) / 100;
+    lenVal.textContent = Math.round(lenK * 100) + '%';
+    if (!nodes.length) return;
+    if (!anchor) grabAnchor();
+    stretch(nodes, lenK);
+    if (anchor) { view.x = anchor.sx - anchor.n.x * view.k; view.y = anchor.sy - anchor.n.y * view.k; }
+    editor.hidden = true;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
+  });
+
+  /* ---------- dark mode ---------- */
+  function setTheme(d, save) {
+    dark = d;
+    document.body.classList.toggle('dark', dark);
+    themeBtn.textContent = dark ? '☀' : '☾';
+    if (save) { try { localStorage.setItem('mm-theme', dark ? 'dark' : 'light'); } catch (e) { /* ignore */ } }
+    if (nodes.length) render();
+  }
+  themeBtn.onclick = () => setTheme(!dark, true);
+  (function initTheme() {
+    let t = null;
+    try { t = localStorage.getItem('mm-theme'); } catch (e) { /* ignore */ }
+    const pref = t ? t === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    setTheme(pref, false);
+  })();
+
   /* ---------- generate ---------- */
   function generate() {
     try {
@@ -232,7 +282,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       statusEl.textContent = 'Building…';
       setTimeout(() => {
         try {
-          nodes = layout(root);
+          nodes = layout(root, lenK);
           editor.hidden = true;
           selected = null;
           render(); fit();
@@ -243,7 +293,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     } catch (err) { console.error(err); statusEl.textContent = 'Error: ' + err.message; }
   }
 
-  /* ---------- PDF (vector, cropped to content, never dimmed) ---------- */
+  /* ---------- PDF (vector, cropped to content, current line length + current theme, never dimmed) ---------- */
   async function downloadPDF() {
     if (!nodes.length) { statusEl.textContent = 'Generate a map first.'; return; }
     try {
@@ -257,7 +307,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       document.body.appendChild(holder);
       const out = S('svg', { xmlns: NS, width: W, height: H, viewBox: `0 0 ${W} ${H}` }, holder);
       const defs = S('defs', {}, out);
-      S('rect', { x: 0, y: 0, width: W, height: H, fill: '#ffffff' }, out);
+      S('rect', { x: 0, y: 0, width: W, height: H, fill: PAGE_BG() }, out);
       const g = S('g', { transform: `translate(${-b.x} ${-b.y})` }, out);
       drawGraph(nodes, g, defs, 'p');
 
@@ -265,7 +315,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       const opts = { x: 0, y: 0, width: W * s, height: H * s };
       if (typeof pdf.svg === 'function') await pdf.svg(out, opts);
       else await (window.svg2pdf.svg2pdf || window.svg2pdf)(out, pdf, opts);
-      pdf.save((nodes[0].text.replace(/[^\w\-]+/g, '_') || 'mindmap') + '_mindmap.pdf');
+      pdf.save((nodes[0].text.replace(/[^\w\-]+/g, '_') || 'mindmap') + '_mindmap' + (dark ? '_dark' : '') + '.pdf');
       holder.remove();
     } catch (err) { console.error(err); statusEl.textContent = 'PDF error: ' + err.message; }
   }
@@ -292,6 +342,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
   };
   window.addEventListener('resize', () => { if (nodes.length) applyView(); });
 
+  lenVal.textContent = Math.round(lenK * 100) + '%';
   input.value = SAMPLE;
   generate();
 })();
