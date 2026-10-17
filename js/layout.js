@@ -106,17 +106,29 @@
     n.children.forEach((c, i) => {
       const p = n.pl[i], phi = n.ang + p.th, d = p.D - c.a;
       c.bx = n.bx + d * Math.cos(phi); c.by = n.by + d * Math.sin(phi); c.ang = phi;
+      c.dx = c.bx - n.bx; c.dy = c.by - n.by;          // default parent→child offset (the "100%" line)
       placeDown(c);
     });
   }
 
-  /* ---- line-length knob: scales every distance from the centre (L >= 1 keeps it overlap-free) ---- */
-  function stretch(nodes, L) {
+  /* ---- line-length controls ----
+     lv[d] = multiplier for the lines that end at level-d boxes (parent → child), default 1, 0 allowed.
+     L     = overall stretch (>= 1) applied on top of everything.
+     Nodes are in pre-order, so a parent is always positioned before its children. */
+  function stretch(nodes, L, lv) {
     L = Math.max(1, L || 1);
-    nodes.forEach(n => { n.x = n.bx * L; n.y = n.by * L; });
+    for (const n of nodes) {
+      if (!n.parent) { n.ux = 0; n.uy = 0; }
+      else {
+        const m = lv && lv[n.depth] != null ? lv[n.depth] : 1;
+        n.ux = n.parent.ux + n.dx * m;
+        n.uy = n.parent.uy + n.dy * m;
+      }
+      n.x = n.ux * L; n.y = n.uy * L;
+    }
   }
 
-  function layout(root, L) {
+  function layout(root, L, lv) {
     const nodes = [];
     (function walk(n) { nodes.push(n); n.children.forEach(walk); })(root);
     let maxDepth = 0; nodes.forEach(n => { if (n.depth > maxDepth) maxDepth = n.depth; });
@@ -124,7 +136,7 @@
     build(root);
     root.bx = 0; root.by = 0; root.ang = 0;
     placeDown(root);
-    stretch(nodes, L);
+    stretch(nodes, L, lv);
     return nodes;
   }
 
