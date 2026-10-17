@@ -20,6 +20,17 @@ button.primary{background:#2A9D8F;border-color:#2A9D8F;color:#fff;font-weight:60
 .knob label{display:flex;justify-content:space-between}
 .knob input[type=range]{width:100%;accent-color:#2A9D8F}
 .knob small{color:var(--muted);font-size:11px;line-height:1.3}
+
+/* per-level line controls */
+.levels{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+.levels summary{cursor:pointer;font-weight:600}
+#levelsBody{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+#levelsBody small{color:var(--muted);font-size:11px;line-height:1.3}
+.lvl{display:flex;flex-direction:column;gap:2px}
+.lvl label{display:flex;justify-content:space-between;font-size:12px}
+.lvl input[type=range]{width:100%;accent-color:#2A9D8F}
+#levelsBody .reset{align-self:flex-start;padding:5px 10px;font-size:12px}
+
 #status{font-size:12px;color:var(--muted);min-height:16px}
 #legendBody{display:grid;gap:4px;margin-top:6px;font-size:12px}
 .sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px}
