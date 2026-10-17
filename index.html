@@ -16,10 +16,14 @@
       <button id="sample">Sample</button>
     </div>
     <div class="knob">
-      <label for="len">Line length <b id="lenVal">120%</b></label>
+      <label for="len">Line length (all levels) <b id="lenVal">120%</b></label>
       <input type="range" id="len" min="100" max="300" step="5" value="120">
       <small>100% is the tightest layout with no overlaps. Higher values stretch every line.</small>
     </div>
+    <details class="levels" id="levelsBox">
+      <summary>Line length by level</summary>
+      <div id="levelsBody"><small>Generate a map first.</small></div>
+    </details>
     <div id="status"></div>
     <details open>
       <summary>Colour legend</summary>
