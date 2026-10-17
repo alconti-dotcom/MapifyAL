@@ -7,10 +7,12 @@
   const svg = $('svg'), canvas = $('canvas'), input = $('input'), statusEl = $('status');
   const editor = $('editor'), typeSel = $('typeSel'), panel = $('panel');
   const lenEl = $('len'), lenVal = $('lenVal'), themeBtn = $('theme');
+  const levelsBody = $('levelsBody');
 
   let nodes = [], world = null, editing = null;
   let selected = null, nodeEls = new Map(), edgeEls = new Map();
   let lenK = (+lenEl.value || 120) / 100;
+  let levels = {};                       // per-level line multipliers (absent = default layout = 100%)
   let dark = false;
   const view = { x: 0, y: 0, k: 1 };
 
@@ -228,9 +230,9 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
   }
   typeSel.addEventListener('change', () => { if (editing) { editing.type = typeSel.value; render(); } });
 
-  /* ---------- line-length knob with a locked view anchor ---------- */
-  // While the knob is being dragged, the box nearest the screen centre stays pinned to its on-screen spot,
-  // so the map grows/shrinks around what you're looking at instead of flying away.
+  /* ---------- line-length sliders with a locked view anchor ---------- */
+  // While any line slider is being dragged, the box nearest the screen centre stays pinned to its
+  // on-screen spot, so the map grows/shrinks around what you're looking at instead of flying away.
   let anchor = null, raf = 0;
   function grabAnchor() {
     if (!nodes.length) return;
@@ -244,19 +246,67 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     anchor = best ? { n: best, sx: bsx, sy: bsy } : null;
   }
   const dropAnchor = () => { anchor = null; };
-  lenEl.addEventListener('pointerdown', grabAnchor);
-  lenEl.addEventListener('keydown', () => { if (!anchor) grabAnchor(); });
-  ['change', 'pointerup', 'pointercancel', 'blur'].forEach(ev => lenEl.addEventListener(ev, dropAnchor));
-  lenEl.addEventListener('input', () => {
-    lenK = (+lenEl.value) / 100;
-    lenVal.textContent = Math.round(lenK * 100) + '%';
+  function bindLock(el) {
+    el.addEventListener('pointerdown', grabAnchor);
+    el.addEventListener('keydown', () => { if (!anchor) grabAnchor(); });
+    ['change', 'pointerup', 'pointercancel', 'blur'].forEach(ev => el.addEventListener(ev, dropAnchor));
+  }
+  function relayout() {
     if (!nodes.length) return;
     if (!anchor) grabAnchor();
-    stretch(nodes, lenK);
+    stretch(nodes, lenK, levels);
     if (anchor) { view.x = anchor.sx - anchor.n.x * view.k; view.y = anchor.sy - anchor.n.y * view.k; }
     editor.hidden = true;
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
+  }
+
+  // overall slider
+  bindLock(lenEl);
+  lenEl.addEventListener('input', () => {
+    lenK = (+lenEl.value) / 100;
+    lenVal.textContent = Math.round(lenK * 100) + '%';
+    relayout();
   });
+
+  // one slider per branch level (level d = the lines that end at level-d boxes)
+  function buildLevelControls() {
+    levelsBody.innerHTML = '';
+    let maxD = 0; nodes.forEach(n => { if (n.depth > maxD) maxD = n.depth; });
+    if (maxD < 1) { levelsBody.innerHTML = '<small>No branches yet.</small>'; return; }
+
+    const hint = document.createElement('small');
+    hint.textContent = 'Each slider changes only the lines that end at that level. 100% = the default layout; 0% pulls those boxes onto their parent, so overlaps are expected near 0.';
+    levelsBody.appendChild(hint);
+
+    const sliders = [];
+    for (let d = 1; d <= maxD; d++) {
+      const wrap = document.createElement('div'); wrap.className = 'lvl';
+      const lab = document.createElement('label');
+      const name = document.createElement('span');
+      name.textContent = d === 1 ? 'Level 1 · center → main branches' : 'Level ' + d + ' · level ' + (d - 1) + ' → ' + d;
+      const val = document.createElement('b'); val.textContent = '100%';
+      lab.append(name, val);
+      const sl = document.createElement('input');
+      sl.type = 'range'; sl.min = 0; sl.max = 300; sl.step = 1; sl.value = 100;
+      sl.addEventListener('input', () => {
+        levels[d] = (+sl.value) / 100;
+        val.textContent = sl.value + '%';
+        relayout();
+      });
+      bindLock(sl);
+      wrap.append(lab, sl);
+      levelsBody.appendChild(wrap);
+      sliders.push({ d, sl, val });
+    }
+    const rs = document.createElement('button');
+    rs.className = 'reset'; rs.textContent = 'Reset levels';
+    rs.onclick = () => {
+      levels = {};
+      sliders.forEach(s => { s.sl.value = 100; s.val.textContent = '100%'; });
+      grabAnchor(); relayout(); dropAnchor();
+    };
+    levelsBody.appendChild(rs);
+  }
 
   /* ---------- dark mode ---------- */
   function setTheme(d, save) {
@@ -282,9 +332,11 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       statusEl.textContent = 'Building…';
       setTimeout(() => {
         try {
-          nodes = layout(root, lenK);
+          levels = {};                                  // every new map starts from the default layout
+          nodes = layout(root, lenK, levels);
           editor.hidden = true;
           selected = null;
+          buildLevelControls();
           render(); fit();
           statusEl.textContent = nodes.length + ' boxes · drag to pan · scroll/pinch to zoom · tap a box to highlight its branch (tap empty space to clear)';
           panel.classList.remove('open');
@@ -293,7 +345,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     } catch (err) { console.error(err); statusEl.textContent = 'Error: ' + err.message; }
   }
 
-  /* ---------- PDF (vector, cropped to content, current line length + current theme, never dimmed) ---------- */
+  /* ---------- PDF (vector, cropped to content, current line lengths + current theme, never dimmed) ---------- */
   async function downloadPDF() {
     if (!nodes.length) { statusEl.textContent = 'Generate a map first.'; return; }
     try {
