@@ -15,6 +15,7 @@ body{display:flex}
 #input{flex:1;min-height:180px;resize:none;border:1px solid var(--fieldb);background:var(--field);color:var(--fg);border-radius:8px;padding:10px;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 button,.btn{border:1px solid var(--btnb);background:var(--btn);border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer;color:inherit}
+button:disabled{opacity:.45;cursor:default}
 button.primary{background:#2A9D8F;border-color:#2A9D8F;color:#fff;font-weight:600}
 .knob{display:flex;flex-direction:column;gap:4px;font-size:13px}
 .knob label{display:flex;justify-content:space-between}
@@ -42,10 +43,18 @@ button.primary{background:#2A9D8F;border-color:#2A9D8F;color:#fff;font-weight:60
 #toolbar button{box-shadow:0 1px 3px rgba(0,0,0,.18)}
 #toolbar button.primary{background:#2A9D8F}
 #menuBtn{display:none}
+
+/* box popup: type + single-line length */
 #editor{position:absolute;z-index:4;background:var(--pop);border:1px solid var(--fieldb);border-radius:8px;padding:8px;
-  box-shadow:0 6px 20px rgba(0,0,0,.28);font-size:13px}
+  box-shadow:0 6px 20px rgba(0,0,0,.28);font-size:13px;min-width:210px;display:flex;flex-direction:column;gap:8px}
 #editor[hidden]{display:none}
 #editor select{font-size:14px;padding:4px;background:var(--field);color:var(--fg);border:1px solid var(--fieldb);border-radius:6px}
+.erow{display:flex;align-items:center;gap:6px}
+.erow.col{flex-direction:column;align-items:stretch;gap:3px}
+.erow[hidden]{display:none}
+.erow label{display:flex;justify-content:space-between;font-size:12px}
+.erow input[type=range]{width:100%;accent-color:#2A9D8F}
+button.mini{padding:4px 8px;font-size:12px;align-self:flex-start}
 
 /* highlight + ripple */
 .node,.edge{transition:opacity .28s ease}
