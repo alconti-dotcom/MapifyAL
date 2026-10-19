@@ -112,15 +112,18 @@
   }
 
   /* ---- line-length controls ----
-     lv[d] = multiplier for the lines that end at level-d boxes (parent → child), default 1, 0 allowed.
-     L     = overall stretch (>= 1) applied on top of everything.
+     For the line that ends at node n (parent → n), the multiplier is chosen in this order:
+       1. n.ov            single-line override (set by selecting that box), 0 allowed
+       2. lv[n.depth]     level multiplier, 0 allowed
+       3. 1               default layout
+     L = overall stretch (>= 1) applied on top of everything.
      Nodes are in pre-order, so a parent is always positioned before its children. */
   function stretch(nodes, L, lv) {
     L = Math.max(1, L || 1);
     for (const n of nodes) {
       if (!n.parent) { n.ux = 0; n.uy = 0; }
       else {
-        const m = lv && lv[n.depth] != null ? lv[n.depth] : 1;
+        const m = n.ov != null ? n.ov : (lv && lv[n.depth] != null ? lv[n.depth] : 1);
         n.ux = n.parent.ux + n.dx * m;
         n.uy = n.parent.uy + n.dy * m;
       }
