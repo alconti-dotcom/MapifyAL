@@ -8,6 +8,7 @@
   const editor = $('editor'), typeSel = $('typeSel'), panel = $('panel');
   const lenEl = $('len'), lenVal = $('lenVal'), themeBtn = $('theme');
   const levelsBody = $('levelsBody');
+  const lineRow = $('lineRow'), lineLen = $('lineLen'), lineVal = $('lineVal'), lineReset = $('lineReset');
 
   let nodes = [], world = null, editing = null;
   let selected = null, nodeEls = new Map(), edgeEls = new Map();
@@ -216,17 +217,31 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     zoomAt(p.x, p.y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
   }, { passive: false });
 
-  /* ---------- click a box → change its type ---------- */
+  /* ---------- click a box → change its type / its own line length ---------- */
   Object.keys(TYPES).forEach(k => {
     const o = document.createElement('option'); o.value = k; o.textContent = TYPES[k].label; typeSel.appendChild(o);
   });
+
+  // multiplier currently applied to the line that ends at node n (override > level > default)
+  const effMul = n => (n.ov != null ? n.ov : (levels[n.depth] != null ? levels[n.depth] : 1));
+
+  function syncLineUI(n) {
+    const has = !!(n && n.parent);                      // the centre box has no incoming line
+    lineRow.hidden = !has;
+    if (!has) return;
+    const v = Math.round(effMul(n) * 100);
+    lineLen.value = v; lineVal.textContent = v + '%';
+    lineReset.disabled = n.ov == null;
+  }
+
   function openEditor(n, e) {
     if (!n) return;
     editing = n; typeSel.value = n.type;
+    syncLineUI(n);
     const p = rel(e), r = canvas.getBoundingClientRect();
     editor.hidden = false;
-    editor.style.left = Math.min(p.x + 8, r.width - 240) + 'px';
-    editor.style.top = Math.min(p.y + 8, r.height - 60) + 'px';
+    editor.style.left = Math.max(4, Math.min(p.x + 8, r.width - 230)) + 'px';
+    editor.style.top = Math.max(4, Math.min(p.y + 8, r.height - 140)) + 'px';
   }
   typeSel.addEventListener('change', () => { if (editing) { editing.type = typeSel.value; render(); } });
 
@@ -251,12 +266,12 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     el.addEventListener('keydown', () => { if (!anchor) grabAnchor(); });
     ['change', 'pointerup', 'pointercancel', 'blur'].forEach(ev => el.addEventListener(ev, dropAnchor));
   }
-  function relayout() {
+  function relayout(keepEditor) {
     if (!nodes.length) return;
     if (!anchor) grabAnchor();
     stretch(nodes, lenK, levels);
     if (anchor) { view.x = anchor.sx - anchor.n.x * view.k; view.y = anchor.sy - anchor.n.y * view.k; }
-    editor.hidden = true;
+    if (!keepEditor) editor.hidden = true;
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
   }
 
@@ -268,6 +283,22 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     relayout();
   });
 
+  // single-line slider (inside the box popup): overrides the level slider for this one line, 0 allowed
+  bindLock(lineLen);
+  lineLen.addEventListener('input', () => {
+    if (!editing || !editing.parent) return;
+    editing.ov = (+lineLen.value) / 100;
+    lineVal.textContent = lineLen.value + '%';
+    lineReset.disabled = false;
+    relayout(true);
+  });
+  lineReset.addEventListener('click', () => {
+    if (!editing) return;
+    editing.ov = undefined;                             // back to the level / default length
+    syncLineUI(editing);
+    grabAnchor(); relayout(true); dropAnchor();
+  });
+
   // one slider per branch level (level d = the lines that end at level-d boxes)
   function buildLevelControls() {
     levelsBody.innerHTML = '';
@@ -275,7 +306,7 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
     if (maxD < 1) { levelsBody.innerHTML = '<small>No branches yet.</small>'; return; }
 
     const hint = document.createElement('small');
-    hint.textContent = 'Each slider changes only the lines that end at that level. 100% = the default layout; 0% pulls those boxes onto their parent, so overlaps are expected near 0.';
+    hint.textContent = 'Each slider changes only the lines that end at that level. 100% = the default layout; 0% pulls those boxes onto their parent, so overlaps are expected near 0. Tap a box to override just its own line.';
     levelsBody.appendChild(hint);
 
     const sliders = [];
@@ -306,6 +337,14 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       grabAnchor(); relayout(); dropAnchor();
     };
     levelsBody.appendChild(rs);
+
+    const cl = document.createElement('button');
+    cl.className = 'reset'; cl.textContent = 'Clear single-line overrides';
+    cl.onclick = () => {
+      nodes.forEach(n => { n.ov = undefined; });
+      grabAnchor(); relayout(); dropAnchor();
+    };
+    levelsBody.appendChild(cl);
   }
 
   /* ---------- dark mode ---------- */
@@ -333,12 +372,12 @@ Jan Ingenhousz discovered in 1779 that light is essential for plants. Dr. Melvin
       setTimeout(() => {
         try {
           levels = {};                                  // every new map starts from the default layout
-          nodes = layout(root, lenK, levels);
-          editor.hidden = true;
+          nodes = layout(root, lenK, levels);           // (new nodes carry no single-line overrides)
+          editor.hidden = true; editing = null;
           selected = null;
           buildLevelControls();
           render(); fit();
-          statusEl.textContent = nodes.length + ' boxes · drag to pan · scroll/pinch to zoom · tap a box to highlight its branch (tap empty space to clear)';
+          statusEl.textContent = nodes.length + ' boxes · drag to pan · scroll/pinch to zoom · tap a box to highlight its branch, change its type or set its own line length (tap empty space to clear)';
           panel.classList.remove('open');
         } catch (err) { console.error(err); statusEl.textContent = 'Error: ' + err.message; }
       }, 20);
