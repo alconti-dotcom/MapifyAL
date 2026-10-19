@@ -42,7 +42,12 @@
       <button id="pdf" class="primary">PDF</button>
     </div>
     <div id="editor" hidden>
-      Type: <select id="typeSel"></select>
+      <div class="erow">Type: <select id="typeSel"></select></div>
+      <div class="erow col" id="lineRow">
+        <label for="lineLen">This line only <b id="lineVal">100%</b></label>
+        <input type="range" id="lineLen" min="0" max="400" step="1" value="100">
+        <button id="lineReset" class="mini">Reset this line</button>
+      </div>
     </div>
   </main>
 
